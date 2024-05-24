@@ -1,0 +1,140 @@
+#include <Wire.h>
+#include <TEA5767Radio.h>
+#include <SoftwareSerial.h> // Include the SoftwareSerial library for Bluetooth communication
+
+// TEA5767 module pins
+#define TEA5767_SDA_PIN 20
+#define TEA5767_SCL_PIN 21
+
+// Rotary encoder pins
+#define ENCODER_PIN_A 2
+#define ENCODER_PIN_B 3
+#define ENCODER_BUTTON_PIN 4
+
+// Bluetooth module pins
+#define BLUETOOTH_RX_PIN 5
+#define BLUETOOTH_TX_PIN 6
+
+// List of channel frequencies
+const float frequencies[] = {92.5, 94.1, 96.3, 99.0, 103.5, 104.5, 105.5, 107.0};
+int currentFrequencyIndex = 0;
+
+// TEA5767 object
+TEA5767Radio radio;
+
+// Rotary encoder variables
+int lastEncoderState;
+int encoderState;
+int volume = 10; // initial volume level
+
+// Bluetooth serial port
+SoftwareSerial bluetoothSerial(BLUETOOTH_RX_PIN, BLUETOOTH_TX_PIN);
+
+void setup() {
+  // Initialize serial communication
+  Serial.begin(9600);
+  
+  // Initialize TEA5767 module
+  Wire.begin(TEA5767_SDA_PIN, TEA5767_SCL_PIN);
+  radio.init();
+
+  // Set initial frequency
+  radio.setFrequency(frequencies[currentFrequencyIndex]);
+
+  // Initialize rotary encoder pins
+  pinMode(ENCODER_PIN_A, INPUT_PULLUP);
+  pinMode(ENCODER_PIN_B, INPUT_PULLUP);
+  pinMode(ENCODER_BUTTON_PIN, INPUT_PULLUP);
+
+  // Initialize Bluetooth serial port
+  bluetoothSerial.begin(9600);
+
+  // Display initial frequency
+  Serial.print("Initial Frequency: ");
+  Serial.println(frequencies[currentFrequencyIndex]);
+}
+
+void loop() {
+  // Check for frequency change
+  handleFrequencyChange();
+
+  // Check for volume change
+  handleVolumeChange();
+
+  // Check for Bluetooth command
+  handleBluetoothCommand();
+}
+
+void handleFrequencyChange() {
+  // Check if the button on the rotary encoder is pressed
+  if (digitalRead(ENCODER_BUTTON_PIN) == LOW) {
+    // Increment frequency index and wrap around if necessary
+    currentFrequencyIndex = (currentFrequencyIndex + 1) % (sizeof(frequencies) / sizeof(float));
+    
+    // Set new frequency
+    radio.setFrequency(frequencies[currentFrequencyIndex]);
+
+    // Display new frequency
+    Serial.print("New Frequency: ");
+    Serial.println(frequencies[currentFrequencyIndex]);
+    
+    // Delay to debounce button
+    delay(200);
+  }
+}
+
+void handleVolumeChange() {
+  // Read the current state of the encoder
+  encoderState = digitalRead(ENCODER_PIN_A);
+
+  // If the state has changed, increment or decrement volume accordingly
+  if (encoderState != lastEncoderState) {
+    // If the other pin is low, increment the volume
+    if (digitalRead(ENCODER_PIN_B) == LOW) {
+      volume = min(volume + 1, 20); // Increase volume (up to a maximum of 20)
+    } else {
+      volume = max(volume - 1, 0); // Decrease volume (down to a minimum of 0)
+    }
+
+    // Set the volume on the TEA5767 module
+    radio.setVolume(volume);
+
+    // Display the new volume
+    Serial.print("New Volume: ");
+    Serial.println(volume);
+  }
+
+  // Remember the current state of the encoder for the next iteration
+  lastEncoderState = encoderState;
+}
+
+void handleBluetoothCommand() {
+  // Check if data is available on the Bluetooth serial port
+  if (bluetoothSerial.available()) {
+    // Read the incoming command
+    char command = bluetoothSerial.read();
+
+    // Process the command
+    switch (command) {
+      case 'V': // Volume up
+        volume = min(volume + 1, 20); // Increase volume (up to a maximum of 20)
+        radio.setVolume(volume);
+        Serial.print("New Volume: ");
+        Serial.println(volume);
+        break;
+      case 'v': // Volume down
+        volume = max(volume - 1, 0); // Decrease volume (down to a minimum of 0)
+        radio.setVolume(volume);
+        Serial.print("New Volume: ");
+        Serial.println(volume);
+        break;
+      case 'F': // Frequency next
+        currentFrequencyIndex = (currentFrequencyIndex + 1) % (sizeof(frequencies) / sizeof(float));
+        radio.setFrequency(frequencies[currentFrequencyIndex]);
+        Serial.print("New Frequency: ");
+        Serial.println(frequencies[currentFrequencyIndex]);
+        break;
+      // Add more commands as needed
+    }
+  }
+}
